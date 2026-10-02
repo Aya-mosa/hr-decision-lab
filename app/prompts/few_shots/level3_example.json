@@ -1,0 +1,14 @@
+{
+  "scenario_id": "example_l3_001",
+  "level": "strategic_hr_leader",
+  "category": "workforce_decisions",
+  "title": "النمو مقابل تخفيض تكلفة القوى العاملة",
+  "situation": "الشركة تستهدف نمو الإيرادات بنسبة 30% خلال ثلاث سنوات، لكن الهوامش انخفضت. الرئيس التنفيذي يطلب خفض التكلفة التشغيلية 10%. المدير المالي يقترح تخفيض القوى العاملة بنسبة 12%. رئيس قطاع الأعمال يعترض قائلًا: إذا فعلنا ذلك فلن نستطيع تنفيذ خطة النمو.",
+  "question": "يسألك الـ CEO: ما توصية الموارد البشرية؟",
+  "options": [
+    {"option_id": "A", "text": "دعم تخفيض Headcount بنسبة 12% فورًا.", "immediate_result": "يحصل المدير المالي على وفورات واضحة وسريعة.", "long_term_consequences": ["بعد 12 شهرًا تنخفض التكلفة لكن الشركة تعاني في تنفيذ مبادرات النمو"], "archetype_label": "Commercial CHRO"},
+    {"option_id": "B", "text": "رفض أي تخفيض لحماية خطة النمو.", "immediate_result": "يشعر رئيس قطاع الأعمال بدعم كامل.", "long_term_consequences": ["يستمر الضغط المالي دون معالجة"], "archetype_label": "Culture & People Champion"},
+    {"option_id": "C", "text": "إعادة تصميم القوى العاملة: أتمتة، إزالة طبقات إدارية زائدة، إعادة تأهيل وإعادة توزيع الموظفين، مع حماية الوظائف الحرجة.", "immediate_result": "يتطلب وقتًا أطول للتخطيط والتنفيذ.", "long_term_consequences": ["توفير تكلفة مستدام دون فقدان القدرات الحرجة"], "archetype_label": "Enterprise Architect"},
+    {"option_id": "D", "text": "تجميد التوظيف والاعتماد على الاستقالات الطبيعية لتقليل الحجم تدريجيًا.", "immediate_result": "تجنب أي قرار حاسم في الوقت الحالي.", "long_term_consequences": ["بطء شديد في تحقيق أي وفورات فعلية"], "archetype_label": "Executive Follower"}
+  ]
+}

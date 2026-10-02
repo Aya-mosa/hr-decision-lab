@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --color-ink: #151b26;
+  --color-panel: #1d2534;
+  --color-line: #313d52;
+  --color-paper: #ede8d8;
+  --color-muted: #9aa4b8;
+  --color-gold: #c9a24b;
+  --color-gold-dim: #8a763f;
+}
+
+@theme inline {
+  --font-sans: "IBM Plex Sans Arabic", sans-serif;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: "IBM Plex Sans Arabic", sans-serif;
+}
+
+.btn-primary {
+  background: var(--color-gold);
+  color: var(--color-ink);
+  font-weight: 500;
+  border-radius: 0.375rem;
+  padding: 0.75rem 1.25rem;
+  transition: opacity 0.15s ease;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-paper);
+  border: 1px solid var(--color-line);
+  font-weight: 500;
+  border-radius: 0.375rem;
+  padding: 0.75rem 1.25rem;
+  transition: border-color 0.15s ease;
+}
+.btn-secondary:hover { border-color: var(--color-gold); }
