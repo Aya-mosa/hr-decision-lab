@@ -36,3 +36,66 @@ Admins manage the whole flow from a dashboard: sending invite batches (separated
 - Vercel — frontend hosting
 
 ## Project Structure
+
+app/
+api/ FastAPI routers (main app, admin, invites)
+services/ Business logic (scenario generation, evaluation, pattern
+analysis, invites, email, admin auth)
+schemas/ Pydantic models — the data contract for scenarios,
+decisions, and reports
+prompts/ LLM system prompts and few-shot examples
+data/ Static archetype/behavior reference data
+db.py / db_models.py SQLAlchemy engine and ORM models
+
+hr_decision_lab_frontend/
+app/ Next.js App Router pages (assessment flow, admin
+dashboard, invite links, reports)
+lib/ API clients and shared utilities
+
+tests/ Offline and live integration tests
+
+
+## Running Locally
+
+### Backend
+
+```bash
+pip install -r requirements.txt
+uvicorn app.api.main:app --reload
+```
+
+API docs available at `http://127.0.0.1:8000/docs` (Swagger UI).
+
+**Required environment variables:**
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string (falls back to local SQLite if unset) |
+| `OPENROUTER_API_KEY` | For scenario generation and report narratives |
+| `RESEND_API_KEY` | For sending invite and result-sharing emails |
+| `RESEND_FROM_EMAIL` | Verified sender address |
+| `ALLOWED_ORIGINS` | Comma-separated list of allowed frontend origins (CORS) |
+| `FRONTEND_BASE_URL` | Used to build links in outgoing emails |
+| `ALLOW_ADMIN_SIGNUP` | Set to `true` temporarily to enable `/admin/signup`; keep unset/`false` in production |
+
+### Frontend
+
+```bash
+cd hr_decision_lab_frontend
+npm install
+npm run dev
+```
+
+Set `NEXT_PUBLIC_API_URL` in `.env.local` to point to the backend.
+
+## Testing
+
+```bash
+pytest tests/
+```
+
+`tests/test_live_generation.py` requires a live `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`, depending on configuration) and makes real API calls; the rest run fully offline.
+
+---
+
+Built by [Aya Mousa](https://github.com/Aya-mosa).
