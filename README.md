@@ -37,7 +37,8 @@ Admins manage the whole flow from a dashboard: sending invite batches (separated
 
 ## Project Structure
 
- ```app/
+ ```
+app/
 api/ FastAPI routers (main app, admin, invites)
 services/ Business logic (scenario generation, evaluation, pattern
 analysis, invites, email, admin auth)
