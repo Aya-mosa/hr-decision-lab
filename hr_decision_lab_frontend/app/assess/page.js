@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   LEVELS,
   CATEGORIES,
@@ -11,11 +11,18 @@ import {
   shareResultByEmail,
 } from "@/lib/api";
 import { downloadPatternCard } from "@/lib/patternCard";
+import ProgressBar from "@/components/ProgressBar";
 
 const SCENARIOS_PER_ASSESSMENT = 10;
 
-function randomCategory() {
-  return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)].id;
+// خلط الفئات بحيث يأخذ كل سيناريو فئة مختلفة (بدل الاختيار العشوائي مع التكرار)
+function shuffledCategoryIds() {
+  const ids = CATEGORIES.map((c) => c.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids;
 }
 
 export default function AssessPage() {
@@ -29,7 +36,47 @@ export default function AssessPage() {
   const [report, setReport] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const deckRef = useRef([]); // الفئات المخلوطة المتبقية في هذه الجلسة
+  const seenRef = useRef([]); // السيناريوهات التي وصلت للمستخدم (لتجنب التكرار)
+  const receivedRef = useRef(0);
+  const prefetchRef = useRef(null); // السيناريو التالي أثناء تجهيزه في الخلفية
+  const runRef = useRef(0); // يتغير عند البدء من جديد لتجاهل الطلبات القديمة
+
+  function nextCategory() {
+    if (deckRef.current.length === 0) deckRef.current = shuffledCategoryIds();
+    return deckRef.current.pop();
+  }
+
+  function fetchScenario(sid, lvl) {
+    const run = runRef.current;
+    const category = nextCategory();
+    const previous = seenRef.current.slice();
+    return generateScenario(sid, lvl, category, previous).then(
+      (s) => {
+        if (runRef.current === run) {
+          seenRef.current.push({ title: s.title, situation: (s.situation || "").slice(0, 150) });
+          receivedRef.current += 1;
+        }
+        return { ok: true, scenario: s, run };
+      },
+      (e) => ({ ok: false, error: e, run }),
+    );
+  }
+
+  function prefetchNext(sid, lvl) {
+    if (receivedRef.current >= SCENARIOS_PER_ASSESSMENT) {
+      prefetchRef.current = null;
+      return;
+    }
+    prefetchRef.current = fetchScenario(sid, lvl);
+  }
+
   async function startLevel(chosenLevel) {
+    runRef.current += 1;
+    deckRef.current = shuffledCategoryIds();
+    seenRef.current = [];
+    receivedRef.current = 0;
+    prefetchRef.current = null;
     setLevel(chosenLevel);
     const sid = newSessionId();
     setSessionId(sid);
@@ -40,14 +87,19 @@ export default function AssessPage() {
   async function loadNextScenario(sid, lvl) {
     setPhase("loading");
     setErrorMessage("");
-    try {
-      const s = await generateScenario(sid, lvl, randomCategory());
-      setScenario(s);
-      setPhase("scenario");
-    } catch (e) {
-      setErrorMessage(e.message);
+    const pending = prefetchRef.current || fetchScenario(sid, lvl);
+    prefetchRef.current = null;
+    let res = await pending;
+    if (!res.ok) res = await fetchScenario(sid, lvl); // محاولة ثانية لو فشل التحميل المسبق
+    if (res.run !== runRef.current) return; // المستخدم بدأ من جديد
+    if (!res.ok) {
+      setErrorMessage(res.error.message);
       setPhase("error");
+      return;
     }
+    setScenario(res.scenario);
+    setPhase("scenario");
+    prefetchNext(sid, lvl); // نجهز السيناريو التالي أثناء قراءة المستخدم لهذا السيناريو
   }
 
   async function chooseOption(optionId) {
@@ -76,6 +128,10 @@ export default function AssessPage() {
   }
 
   function restart() {
+    runRef.current += 1;
+    prefetchRef.current = null;
+    seenRef.current = [];
+    receivedRef.current = 0;
     setPhase("level-select");
     setLevel(null);
     setSessionId(null);
@@ -98,12 +154,16 @@ export default function AssessPage() {
         </header>
 
         <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-panel)] p-8">
+          {level !== null && ["scenario", "result", "loading"].includes(phase) && (
+            <ProgressBar answered={scenarioCount} total={SCENARIOS_PER_ASSESSMENT} />
+          )}
+
           {phase === "level-select" && (
             <LevelSelect userName={userName} onNameChange={setUserName} onSelect={startLevel} />
           )}
 
           {phase === "loading" && (
-            <p className="text-center text-[var(--color-muted)] py-12">جارٍ التحميل...</p>
+            <p className="text-center text-[var(--color-muted)] py-12 animate-pulse">جارٍ التحميل...</p>
           )}
 
           {phase === "error" && (
@@ -269,7 +329,7 @@ function ReportView({ report, userName, sessionId, onRestart }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div>
           <p className="text-xs text-[var(--color-muted)] mb-1">نمطك المسيطر</p>
           <p className="font-medium text-[var(--color-gold)]">
@@ -288,26 +348,26 @@ function ReportView({ report, userName, sessionId, onRestart }) {
         </div>
       )}
 
-      <div className="flex gap-3 mb-3">
-        <button onClick={() => downloadPatternCard(report, userName)} className="btn-secondary flex-1">
+      <div className="flex flex-wrap gap-3 mb-3">
+        <button onClick={() => downloadPatternCard(report, userName)} className="btn-secondary flex-1 min-w-[160px]">
           تحميل بطاقة النمط للمشاركة
         </button>
-        <button onClick={onRestart} className="btn-primary flex-1">بدء جلسة جديدة</button>
+        <button onClick={onRestart} className="btn-primary flex-1 min-w-[160px]">بدء جلسة جديدة</button>
       </div>
 
       {/* --- Type 2: share result via email --- */}
       <div className="rounded-md border border-[var(--color-line)] px-5 py-4 mt-6">
         <p className="text-sm font-medium mb-3">شارك نتيجتك مع صديق أو زميل عن طريق الإيميل</p>
-        <form onSubmit={handleShare} className="flex gap-2">
+        <form onSubmit={handleShare} className="flex flex-wrap gap-2">
           <input
             type="email"
             required
             value={shareEmail}
             onChange={(e) => setShareEmail(e.target.value)}
             placeholder="بريد صديقك الإلكتروني"
-            className="flex-1 rounded-md border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm focus:border-[var(--color-gold)] outline-none"
+            className="flex-1 min-w-[180px] rounded-md border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm focus:border-[var(--color-gold)] outline-none"
           />
-          <button type="submit" disabled={shareStatus === "sending"} className="btn-secondary">
+          <button type="submit" disabled={shareStatus === "sending"} className="btn-secondary w-full sm:w-auto">
             {shareStatus === "sending" ? "جارٍ الإرسال..." : "إرسال"}
           </button>
         </form>
