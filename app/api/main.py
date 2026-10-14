@@ -36,9 +36,15 @@ app.include_router(admin_router.router)
 app.include_router(invites_router.router)
 
 
+class PreviousScenario(BaseModel):
+    title: str = ""
+    situation: str = ""
+
+
 class GenerateScenarioRequest(BaseModel):
     level: HRLevel
     category: ScenarioCategory
+    previous: list[PreviousScenario] = []
 
 
 class SubmitDecisionRequest(BaseModel):
@@ -54,7 +60,10 @@ class ShareResultRequest(BaseModel):
 @app.post("/sessions/{session_id}/scenarios", response_model=Scenario)
 def create_scenario(session_id: str, req: GenerateScenarioRequest):
     try:
-        scenario = generate_scenario(req.level, req.category)
+        scenario = generate_scenario(
+            req.level, req.category,
+            previous=[p.model_dump() for p in req.previous],
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Scenario generation failed: {e}")
     store.save_scenario(scenario)
