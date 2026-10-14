@@ -3,6 +3,9 @@ Agent 1 — Scenario Generator.
 """
 from __future__ import annotations
 import json
+import random
+import time
+from difflib import SequenceMatcher
 from pathlib import Path
 from pydantic import ValidationError
 import requests
@@ -46,6 +49,51 @@ def _extract_json(raw_text: str) -> dict:
 
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
+# تنويع بيئة السيناريو حتى لا تتشابه المواقف (قطاع الشركة الذي يدور فيه الموقف)
+INDUSTRIES = [
+    "قطاع التجزئة", "القطاع الصحي", "البنوك والخدمات المالية", "شركة تقنية",
+    "التصنيع والصناعة", "التعليم", "الضيافة والفنادق", "النقل والخدمات اللوجستية",
+    "الاتصالات", "الطاقة", "المقاولات والعقارات", "الإعلام والإنتاج",
+]
+
+
+def build_variation_block(previous: list[dict] | None) -> str:
+    industry = random.choice(INDUSTRIES)
+    block = (
+        f"\n\nتنويع إلزامي: اجعل أحداث السيناريو في بيئة عمل من نوع: {industry}. "
+        "استخدم أسماء أشخاص وأرقامًا ومواقف مختلفة عن المثال أعلاه، ولا تنسخ المثال أو تقلّد صياغته."
+    )
+    if previous:
+        lines = []
+        for item in previous[-10:]:
+            title = (item.get("title") or "").strip()
+            situation = (item.get("situation") or "").strip()[:120]
+            if title:
+                lines.append(f"- {title}: {situation}")
+        if lines:
+            block += (
+                "\n\nالسيناريوهات التالية ظهرت للمستخدم نفسه في هذه الجلسة. "
+                "يجب أن يكون السيناريو الجديد مختلفًا عنها تمامًا في الموضوع والموقف ونوع المعضلة "
+                "والاختيارات الأربعة، ولا تكرر أي عنوان أو سؤال أو صياغة اختيار منها:\n"
+                + "\n".join(lines)
+            )
+    return block
+
+
+def _is_duplicate(scenario: Scenario, previous: list[dict] | None) -> bool:
+    if not previous:
+        return False
+    for item in previous:
+        old_title = (item.get("title") or "").strip()
+        old_situation = (item.get("situation") or "").strip()
+        if old_title and SequenceMatcher(None, scenario.title.strip(), old_title).ratio() > 0.6:
+            return True
+        if old_situation and SequenceMatcher(
+            None, scenario.situation.strip()[:200], old_situation[:200]
+        ).ratio() > 0.6:
+            return True
+    return False
+
 
 def call_llm(system_prompt: str) -> str:
     import os
@@ -54,17 +102,23 @@ def call_llm(system_prompt: str) -> str:
         raise RuntimeError(
             "OPENROUTER_API_KEY not set. Get a free key from https://openrouter.ai/keys"
         )
-    resp = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [{"role": "user", "content": system_prompt}],
-            "temperature": 0.9,
-            "response_format": {"type": "json_object"},
-        },
-        timeout=60,
-    )
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": system_prompt}],
+        "temperature": 0.9,
+        "max_tokens": 3500,
+        "response_format": {"type": "json_object"},
+        # إيقاف وضع التفكير الداخلي (thinking) لتقليل زمن التوليد
+        "reasoning": {"effort": "none"},
+    }
+    headers = {"Authorization": f"Bearer {api_key}"}
+    url = "https://openrouter.ai/api/v1/chat/completions"
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    if resp.status_code in (400, 422) and "reasoning" in payload:
+        # لو المزود رفض معامل reasoning نعيد الطلب بدونه بدل أن نفشل
+        payload.pop("reasoning")
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
     resp.raise_for_status()
     data = resp.json()
     try:
@@ -76,13 +130,17 @@ def call_llm(system_prompt: str) -> str:
     return content
 
 
-def generate_scenario(level: HRLevel, category: ScenarioCategory, max_retries: int = 2) -> Scenario:
-    system_prompt = load_system_prompt(level, category)
+def generate_scenario(level: HRLevel, category: ScenarioCategory,
+                      previous: list[dict] | None = None, max_retries: int = 2) -> Scenario:
+    system_prompt = load_system_prompt(level, category) + build_variation_block(previous)
     last_error = None
+    started = time.time()
 
     for attempt in range(max_retries + 1):
         prompt = system_prompt
-        if last_error:
+        if last_error and last_error.startswith("DUPLICATE:"):
+            prompt += "\n\n" + last_error[len("DUPLICATE:"):].strip()
+        elif last_error:
             prompt += (
                 f"\n\nمحاولتك السابقة فشلت بهذا الخطأ بالضبط:\n{last_error}\n"
                 f"أعد إخراج نفس السيناريو بصيغة JSON صحيحة تمامًا، مصححًا هذا الخطأ فقط."
@@ -104,8 +162,16 @@ def generate_scenario(level: HRLevel, category: ScenarioCategory, max_retries: i
             continue
 
         try:
-            return Scenario(**data)
+            scenario = Scenario(**data)
         except ValidationError as e:
             last_error = str(e)
             if attempt == max_retries:
                 raise ValueError(f"LLM output failed schema validation after {max_retries + 1} attempts: {e}") from e
+            continue
+
+        if _is_duplicate(scenario, previous) and attempt < max_retries:
+            last_error = "DUPLICATE: السيناريو الذي أنتجته يشبه سيناريو ظهر سابقًا في هذه الجلسة. ولّد سيناريو مختلفًا تمامًا في الموضوع والموقف."
+            continue
+
+        print(f"[scenario_generator] generated in {time.time() - started:.1f}s (attempts={attempt + 1})")
+        return scenario
