@@ -32,11 +32,11 @@ export function newSessionId() {
   return crypto.randomUUID();
 }
 
-export function generateScenario(sessionId, level, category) {
+export function generateScenario(sessionId, level, category, previous = []) {
   return fetch(`${API_BASE}/sessions/${sessionId}/scenarios`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ level, category }),
+    body: JSON.stringify({ level, category, previous }),
   }).then(handle);
 }
 
