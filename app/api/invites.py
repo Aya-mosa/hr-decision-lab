@@ -1,6 +1,7 @@
 from __future__ import annotations
 import random
 import uuid
+from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -47,8 +48,33 @@ def give_consent(invite_id: str):
     return {"ok": True}
 
 
+class GenerateInviteScenarioRequest(BaseModel):
+    # السيناريو المعروض حاليًا ولم تتم الإجابة عنه بعد (يستخدمه التحميل المسبق للسيناريو التالي)
+    current_scenario_id: Optional[str] = None
+
+
+def _session_scenarios(session_id: str, extra_scenario_id: Optional[str] = None):
+    """كل السيناريوهات التي ظهرت في هذه الجلسة (المُجاب عنها + المعروض حاليًا)."""
+    scenarios = []
+    ids = [d.scenario_id for d in _safe_get_decisions(session_id)]
+    if extra_scenario_id and extra_scenario_id not in ids:
+        ids.append(extra_scenario_id)
+    for sid in ids:
+        try:
+            scenarios.append(store.get_scenario(sid))
+        except KeyError:
+            pass
+    return scenarios
+
+
+def _pick_category(used) -> ScenarioCategory:
+    """يختار فئة لم تُستخدم بعد في الجلسة، وإن استُنفدت كلها يختار عشوائيًا."""
+    remaining = [c for c in ScenarioCategory if c not in used]
+    return random.choice(remaining or list(ScenarioCategory))
+
+
 @router.post("/{invite_id}/scenarios")
-def generate_invite_scenario(invite_id: str):
+def generate_invite_scenario(invite_id: str, req: Optional[GenerateInviteScenarioRequest] = None):
     try:
         invite = invite_service.get_invite(invite_id)
     except KeyError as e:
@@ -66,9 +92,11 @@ def generate_invite_scenario(invite_id: str):
         invite = invite_service.get_invite(invite_id)
 
     level = HRLevel(invite.level)
-    category = random.choice(list(ScenarioCategory))
+    seen = _session_scenarios(invite.session_id, req.current_scenario_id if req else None)
+    category = _pick_category({sc.category for sc in seen})
+    previous = [{"title": sc.title, "situation": sc.situation} for sc in seen]
     try:
-        scenario = generate_scenario(level, category)
+        scenario = generate_scenario(level, category, previous=previous)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Scenario generation failed: {e}")
     store.save_scenario(scenario)
