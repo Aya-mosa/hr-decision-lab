@@ -63,8 +63,12 @@ export function giveConsent(inviteId) {
   return fetch(`${API_BASE}/invites/${inviteId}/consent`, { method: "POST" }).then(handle);
 }
 
-export function generateInviteScenario(inviteId) {
-  return fetch(`${API_BASE}/invites/${inviteId}/scenarios`, { method: "POST" }).then(handle);
+export function generateInviteScenario(inviteId, currentScenarioId = null) {
+  return fetch(`${API_BASE}/invites/${inviteId}/scenarios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_scenario_id: currentScenarioId }),
+  }).then(handle);
 }
 
 export function submitInviteDecision(inviteId, scenarioId, chosenOptionId) {
